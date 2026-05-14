@@ -1,6 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from app.config import get_settings
+from app.api.v1 import api_router
 
 settings = get_settings()
 
@@ -12,7 +14,6 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS — allows the React frontend to talk to this backend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -20,6 +21,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount all v1 routes under /api/v1
+app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/")
@@ -38,8 +42,4 @@ def root():
 
 @app.get("/health")
 def health():
-    return {
-        "success": True,
-        "data": {"status": "healthy"},
-        "meta": {},
-    }
+    return {"success": True, "data": {"status": "healthy"}, "meta": {}}
