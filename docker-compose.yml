@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+
+  # ── FastAPI backend ──────────────────────────────────────────────
+  api:
+    build: .
+    container_name: skymind_api
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount local code into container so --reload picks up changes
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - skymind_network
+
+  # ── PostgreSQL database ──────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    container_name: skymind_db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Persist database data between container restarts
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - skymind_network
+
+  # ── Redis cache + broker ─────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: skymind_redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - skymind_network
+
+volumes:
+  postgres_data:
+
+networks:
+  skymind_network:
+    driver: bridge
