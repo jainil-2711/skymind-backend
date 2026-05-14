@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.config import get_settings
+
+settings = get_settings()
 
 app = FastAPI(
     title="SkyMind API",
@@ -12,7 +15,7 @@ app = FastAPI(
 # CORS — allows the React frontend to talk to this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite default port
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,6 +30,7 @@ def root():
             "name": "SkyMind API",
             "version": "1.0.0",
             "status": "online",
+            "environment": settings.APP_ENV,
         },
         "meta": {},
     }
