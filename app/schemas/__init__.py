@@ -1,1 +1,1 @@
-from app.schemas import common, user
+from app.schemas import common, user, flight

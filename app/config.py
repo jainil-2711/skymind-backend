@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     # Amadeus API
     AMADEUS_CLIENT_ID: str = "placeholder"
     AMADEUS_CLIENT_SECRET: str = "placeholder"
+    AMADEUS_MOCK: str = "true"   # ← set to "false" when real keys are available
 
     # Claude API
     CLAUDE_API_KEY: str = "placeholder"
