@@ -5,4 +5,5 @@ from app.services import (
     alert_service,
     analytics_service,
     saved_search_service,
+    itinerary_service,
 )

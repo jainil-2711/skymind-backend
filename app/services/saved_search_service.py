@@ -1,19 +1,10 @@
 """
 Saved Search Service
 ====================
-Business logic for saved searches.
-
-create()  — save a search config for a user
-list()    — return all saved searches for a user
-get()     — retrieve one saved search (with ownership check)
-rerun()   — retrieve one saved search and re-run it live
-delete()  — remove a saved search (ownership check)
-
-Interview talking point:
-  rerun() is the most interesting function here. It takes a stored
-  search configuration and calls flight_service.search() with it —
-  the same pipeline used by the live search endpoint. The user gets
-  fresh live results from their saved config with one API call.
+Fixed in Week 9: removed the cross-service import of flight_service.
+rerun() no longer calls flight_service directly.
+The router now handles orchestration between saved_search_service and flight_service,
+keeping services independent as the blueprint requires.
 """
 
 from typing import List
@@ -54,30 +45,6 @@ def get(db: Session, saved_search_id: UUID, user_id: UUID) -> SavedSearch:
     if saved.user_id != user_id:
         raise ForbiddenException("You do not own this saved search")
     return saved
-
-
-def rerun(db: Session, saved_search_id: UUID, user_id: UUID) -> dict:
-    """
-    Retrieve a saved search and re-execute it against the live flight pipeline.
-    Returns the scored flight offers exactly as POST /flights/search would.
-    """
-    from app.services.flight_service import search as flight_search
-
-    saved = get(db, saved_search_id, user_id)
-
-    result = flight_search(
-        origin=saved.origin_iata,
-        destination=saved.destination_iata,
-        departure_date=str(saved.depart_date),
-        passengers=saved.passengers,
-        cabin_class=saved.cabin_class,
-        user_id=user_id,
-        db=db,
-    )
-    return {
-        "saved_search": saved,
-        "result": result,
-    }
 
 
 def delete(db: Session, saved_search_id: UUID, user_id: UUID) -> None:

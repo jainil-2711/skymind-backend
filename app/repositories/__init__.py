@@ -1,1 +1,1 @@
-from app.repositories import user_repo, alert_repo, search_repo, saved_search_repo
+from app.repositories import user_repo, alert_repo, search_repo, saved_search_repo, itinerary_repo

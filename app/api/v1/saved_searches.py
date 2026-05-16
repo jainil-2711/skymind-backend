@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.api.v1.deps import get_current_user
 from app.models.user import User
-from app.services import saved_search_service
+from app.services import saved_search_service, flight_service
 from app.schemas.saved_search import SavedSearchCreateRequest, SavedSearchOut
 from app.schemas.common import ApiResponse
 
@@ -17,11 +17,7 @@ def create_saved_search(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Save a flight search configuration for later.
-    Does not run the search — just stores the parameters.
-    Use GET /{id}/rerun to execute it with live results.
-    """
+    """Save a flight search configuration for later retrieval and rerun."""
     saved = saved_search_service.create(db, user_id=current_user.id, payload=payload)
     return ApiResponse.ok(SavedSearchOut.model_validate(saved).model_dump())
 
@@ -31,10 +27,7 @@ def list_saved_searches(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    List all saved searches for the authenticated user.
-    Ordered by most recently saved first.
-    """
+    """List all saved searches for the authenticated user. Most recently saved first."""
     searches = saved_search_service.list_user(db, user_id=current_user.id)
     return ApiResponse.ok([SavedSearchOut.model_validate(s).model_dump() for s in searches])
 
@@ -45,11 +38,10 @@ def get_saved_search(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Retrieve the configuration of a saved search.
-    Does not re-run the search. Use /rerun for live results.
-    """
-    saved = saved_search_service.get(db, saved_search_id=saved_search_id, user_id=current_user.id)
+    """Retrieve one saved search config. Does not re-run the search."""
+    saved = saved_search_service.get(
+        db, saved_search_id=saved_search_id, user_id=current_user.id
+    )
     return ApiResponse.ok(SavedSearchOut.model_validate(saved).model_dump())
 
 
@@ -61,18 +53,27 @@ def rerun_saved_search(
 ):
     """
     Re-execute a saved search with the stored parameters.
-    Returns live scored flight offers — same response as POST /flights/search.
-    The re-run is also logged to search_history.
+    Router orchestrates between saved_search_service and flight_service —
+    neither service imports the other, preserving blueprint architecture rules.
     """
-    result = saved_search_service.rerun(
+    saved = saved_search_service.get(
         db, saved_search_id=saved_search_id, user_id=current_user.id
+    )
+    result = flight_service.search(
+        origin=saved.origin_iata,
+        destination=saved.destination_iata,
+        departure_date=str(saved.depart_date),
+        passengers=saved.passengers,
+        cabin_class=saved.cabin_class,
+        user_id=current_user.id,
+        db=db,
     )
     return ApiResponse.ok(
         data={
-            "saved_search": SavedSearchOut.model_validate(result["saved_search"]).model_dump(),
-            "offers": result["result"]["offers"],
+            "saved_search": SavedSearchOut.model_validate(saved).model_dump(),
+            "offers": result["offers"],
         },
-        meta=result["result"]["meta"],
+        meta=result["meta"],
     )
 
 
@@ -82,8 +83,7 @@ def delete_saved_search(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Delete a saved search. Only the owner can delete.
-    Returns 204 No Content on success.
-    """
-    saved_search_service.delete(db, saved_search_id=saved_search_id, user_id=current_user.id)
+    """Delete a saved search. Only the owner can delete. Returns 204 No Content."""
+    saved_search_service.delete(
+        db, saved_search_id=saved_search_id, user_id=current_user.id
+    )
