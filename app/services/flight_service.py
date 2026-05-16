@@ -7,22 +7,24 @@ Orchestrates the full flight search pipeline:
   3. Call amadeus_client.search_flights() (cache MISS)
   4. Score results via scoring engine
   5. Write scored results to Redis (TTL 10 min)
-  6. Return results + cache metadata
+  6. Log the search to search_history (Week 7)
+  7. Return results + cache metadata
 
-This layer has no HTTP knowledge and no DB knowledge.
-It only coordinates the external client, the scorer, and the cache.
+Week 7 addition: search logging is fire-and-forget.
+If the DB write fails, the search result is still returned.
+The user experience is never degraded by a logging failure.
 """
 
 import json
 import redis
-from typing import Dict, Any
+from typing import Optional, Dict, Any
+from uuid import UUID
 from app.config import get_settings
 from app.external.amadeus_client import search_flights
 from app.core.scoring import score_offers
 
 settings = get_settings()
 
-# Redis client — one connection reused across requests
 _redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
 
 CACHE_TTL_SECONDS = 600  # 10 minutes
@@ -38,10 +40,13 @@ def search(
     departure_date: str,
     passengers: int = 1,
     cabin_class: str = "ECONOMY",
+    user_id: Optional[UUID] = None,
+    db=None,
 ) -> Dict[str, Any]:
     """
-    Main entry point called by the router.
-    Returns a dict with 'offers' (scored, sorted) and 'meta' (cache info).
+    Main entry point called by the router and the alert checker.
+    user_id and db are optional — if provided, the search is logged.
+    The alert checker calls without user_id/db so it doesn't pollute history.
     """
     key = _cache_key(origin, destination, departure_date, passengers, cabin_class)
 
@@ -49,7 +54,7 @@ def search(
     cached = _redis.get(key)
     if cached:
         offers = json.loads(cached)
-        return {
+        result = {
             "offers": offers,
             "meta": {
                 "cache_hit": True,
@@ -61,8 +66,10 @@ def search(
                 "cabin_class": cabin_class.upper(),
             },
         }
+        _log_search(db, user_id, origin, destination, offers, cache_hit=True)
+        return result
 
-    # ── Cache MISS — call provider ─────────────────────────────────────────
+    # ── Cache MISS ────────────────────────────────────────────────────────
     raw_offers = search_flights(
         origin=origin,
         destination=destination,
@@ -71,13 +78,10 @@ def search(
         cabin_class=cabin_class,
     )
 
-    # ── Score and rank ─────────────────────────────────────────────────────
     scored_offers = score_offers(raw_offers)
-
-    # ── Write to cache ─────────────────────────────────────────────────────
     _redis.setex(key, CACHE_TTL_SECONDS, json.dumps(scored_offers))
 
-    return {
+    result = {
         "offers": scored_offers,
         "meta": {
             "cache_hit": False,
@@ -89,3 +93,38 @@ def search(
             "cabin_class": cabin_class.upper(),
         },
     }
+    _log_search(db, user_id, origin, destination, scored_offers, cache_hit=False)
+    return result
+
+
+def _log_search(db, user_id, origin, destination, offers, cache_hit):
+    """
+    Fire-and-forget search logging.
+    Only runs when both db and user_id are provided.
+    Exceptions are swallowed — logging must never break the search response.
+    """
+    if db is None or user_id is None:
+        return
+    try:
+        from app.repositories import search_repo
+        min_price = None
+        if offers:
+            prices = [
+                float(o["price"]["per_passenger"])
+                for o in offers
+                if o.get("price", {}).get("per_passenger")
+            ]
+            if prices:
+                min_price = min(prices)
+
+        search_repo.write(
+            db=db,
+            user_id=user_id,
+            origin_iata=origin.upper(),
+            destination_iata=destination.upper(),
+            result_count=len(offers),
+            min_price_usd=min_price,
+            cache_hit=cache_hit,
+        )
+    except Exception as e:
+        print(f"[FlightService] Search logging failed (non-fatal): {e}")
