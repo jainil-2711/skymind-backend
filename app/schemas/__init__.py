@@ -1,1 +1,1 @@
-from app.schemas import common, user, flight, route, alert, analytics
+from app.schemas import common, user, flight, route, alert, analytics, saved_search

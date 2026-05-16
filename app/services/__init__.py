@@ -1,1 +1,8 @@
-from app.services import auth_service, flight_service, graph_service, alert_service, analytics_service
+from app.services import (
+    auth_service,
+    flight_service,
+    graph_service,
+    alert_service,
+    analytics_service,
+    saved_search_service,
+)
