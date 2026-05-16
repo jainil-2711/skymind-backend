@@ -1,1 +1,1 @@
-from app.repositories import user_repo
+from app.repositories import user_repo, alert_repo

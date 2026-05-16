@@ -1,10 +1,21 @@
-from fastapi import FastAPI, Request
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.api.v1 import api_router
+from app.tasks import price_checker
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # ── Startup ───────────────────────────────────────────────────────────
+    price_checker.start()
+    yield
+    # ── Shutdown ──────────────────────────────────────────────────────────
+    price_checker.stop()
+
 
 app = FastAPI(
     title="SkyMind API",
@@ -12,6 +23,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -22,7 +34,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount all v1 routes under /api/v1
 app.include_router(api_router, prefix="/api/v1")
 
 
