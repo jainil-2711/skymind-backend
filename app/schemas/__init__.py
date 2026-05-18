@@ -1,1 +1,9 @@
-from app.schemas import common, user, flight, route, alert, analytics, saved_search, itinerary
+from app.schemas import common        # noqa: F401
+from app.schemas import user          # noqa: F401
+from app.schemas import flight        # noqa: F401
+from app.schemas import route         # noqa: F401
+from app.schemas import alert         # noqa: F401
+from app.schemas import analytics     # noqa: F401
+from app.schemas import saved_search  # noqa: F401
+from app.schemas import itinerary     # noqa: F401
+from app.schemas import destination   # noqa: F401

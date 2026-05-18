@@ -1,9 +1,8 @@
-from app.services import (
-    auth_service,
-    flight_service,
-    graph_service,
-    alert_service,
-    analytics_service,
-    saved_search_service,
-    itinerary_service,
-)
+from app.services import auth_service          # noqa: F401
+from app.services import flight_service        # noqa: F401
+from app.services import graph_service         # noqa: F401
+from app.services import alert_service         # noqa: F401
+from app.services import analytics_service     # noqa: F401
+from app.services import saved_search_service  # noqa: F401
+from app.services import itinerary_service     # noqa: F401
+from app.services import destination_service   # noqa: F401
