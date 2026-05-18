@@ -9,6 +9,7 @@ from app.api.v1 import analytics
 from app.api.v1 import saved_searches
 from app.api.v1 import itineraries
 from app.api.v1 import destinations
+from app.api.v1 import planner
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -20,3 +21,4 @@ api_router.include_router(analytics.router)
 api_router.include_router(saved_searches.router)
 api_router.include_router(itineraries.router)
 api_router.include_router(destinations.router)
+api_router.include_router(planner.router)
