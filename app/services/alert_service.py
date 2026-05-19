@@ -1,30 +1,23 @@
 """
-Alert Service
-=============
-Business logic for price alerts.
-
-create()     — create a new alert for a user
-list_user()  — return all alerts for a user
-delete()     — remove an alert (only owner can delete)
-check_all()  — called by the background scheduler every 10 minutes.
-               Fetches current mock prices for every active untriggered alert.
-               Marks triggered_at if current best price < target_price_usd.
+Alert service — price alert CRUD and checking with email notification.
+Called by APScheduler every 10 minutes via app/tasks/price_checker.py.
 """
+from __future__ import annotations
 
-from typing import List
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
-from datetime import datetime, timezone, timedelta
+
 from sqlalchemy.orm import Session
 
-from app.models.alert import PriceAlert
+from app.external.sendgrid_client import send_price_alert_email
 from app.repositories import alert_repo
-from app.core.exceptions import NotFoundException, ForbiddenException
+from app.repositories import user_repo
 from app.schemas.alert import AlertCreateRequest
 
 
-def create(db: Session, user_id: UUID, payload: AlertCreateRequest) -> PriceAlert:
+def create(db: Session, user_id: UUID, payload: AlertCreateRequest):
     return alert_repo.create(
-        db,
+        db=db,
         user_id=user_id,
         origin=payload.origin,
         destination=payload.destination,
@@ -33,17 +26,22 @@ def create(db: Session, user_id: UUID, payload: AlertCreateRequest) -> PriceAler
     )
 
 
-def list_user(db: Session, user_id: UUID) -> List[PriceAlert]:
+def list_for_user(db: Session, user_id: UUID):
     return alert_repo.list_for_user(db, user_id)
 
+# Alias used by the alerts router
+list_user = list_for_user
 
-def delete(db: Session, alert_id: UUID, user_id: UUID) -> None:
+def get_by_id(db: Session, alert_id: UUID):
+    return alert_repo.get_by_id(db, alert_id)
+
+
+def delete(db: Session, alert_id: UUID, user_id: UUID) -> bool:
     alert = alert_repo.get_by_id(db, alert_id)
-    if not alert:
-        raise NotFoundException("Alert not found")
-    if alert.user_id != user_id:
-        raise ForbiddenException("You do not own this alert")
+    if not alert or alert.user_id != user_id:
+        return False
     alert_repo.delete(db, alert)
+    return True
 
 
 def check_all(db: Session) -> dict:
@@ -52,21 +50,19 @@ def check_all(db: Session) -> dict:
     For each active untriggered alert:
       1. Search current mock prices for that route
       2. Find the lowest per-passenger price in the result set
-      3. If best price < target_price_usd → mark triggered_at
+      3. If best price < target_price_usd → mark triggered, send email
     """
     from app.services.flight_service import search as flight_search
 
     alerts = alert_repo.list_active(db)
-
     if not alerts:
         print("[AlertService] No active alerts to check.")
         return {"checked": 0, "triggered": 0, "errors": 0}
 
-    checked = 0
+    checked   = 0
     triggered = 0
-    errors = 0
+    errors    = 0
 
-    # Use a fixed upcoming date for price lookups
     search_date = (datetime.now(timezone.utc) + timedelta(days=30)).strftime("%Y-%m-%d")
 
     for alert in alerts:
@@ -78,7 +74,6 @@ def check_all(db: Session) -> dict:
                 passengers=1,
                 cabin_class="ECONOMY",
             )
-
             offers = result.get("offers", [])
             if not offers:
                 alert_repo.mark_checked(db, alert)
@@ -88,19 +83,34 @@ def check_all(db: Session) -> dict:
                 float(offer["price"]["per_passenger"])
                 for offer in offers
             )
-
             alert_repo.mark_checked(db, alert)
             checked += 1
 
             if best_price < float(alert.target_price_usd):
                 alert_repo.mark_triggered(db, alert)
                 triggered += 1
+
                 print(
                     f"[AlertService] TRIGGERED alert {alert.id} | "
                     f"{alert.origin_iata}→{alert.destination_iata} | "
                     f"target=${alert.target_price_usd} | "
                     f"current=${best_price:.2f}"
                 )
+
+                user = user_repo.get_by_id(db, str(alert.user_id))
+                if user:
+                    sent = send_price_alert_email(
+                        to_email=user.email,
+                        to_name=user.full_name or user.email,
+                        origin_iata=alert.origin_iata,
+                        destination_iata=alert.destination_iata,
+                        target_price_usd=float(alert.target_price_usd),
+                        current_price_usd=best_price,
+                    )
+                    print(
+                        f"[AlertService] Email {'sent' if sent else 'failed'} "
+                        f"to {user.email}"
+                    )
             else:
                 print(
                     f"[AlertService] CHECKED alert {alert.id} | "
