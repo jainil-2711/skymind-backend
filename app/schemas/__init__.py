@@ -7,3 +7,4 @@ from app.schemas import analytics     # noqa: F401
 from app.schemas import saved_search  # noqa: F401
 from app.schemas import itinerary     # noqa: F401
 from app.schemas import destination   # noqa: F401
+from app.schemas import multi_city    # noqa: F401

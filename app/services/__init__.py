@@ -7,3 +7,4 @@ from app.services import saved_search_service  # noqa: F401
 from app.services import itinerary_service     # noqa: F401
 from app.services import destination_service   # noqa: F401
 from app.services import planner_service       # noqa: F401
+from app.services import multi_city_service    # noqa: F401
